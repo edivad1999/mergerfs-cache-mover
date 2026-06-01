@@ -3,14 +3,34 @@ import ctypes
 import errno
 import glob
 import logging
+import platform
 import stat
 from pathlib import Path
 
-_libc = ctypes.CDLL("libc.so.6", use_errno=True)
-_lgetxattr = _libc.lgetxattr
-_lgetxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t]
+def _load_lgetxattr():
+    if platform.system() != 'Linux':
+        return None
+
+    try:
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        lgetxattr_func = libc.lgetxattr
+        lgetxattr_func.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        return lgetxattr_func
+    except (OSError, AttributeError) as e:
+        logging.debug(f"Could not load Linux lgetxattr: {e}")
+        return None
+
+_lgetxattr = _load_lgetxattr()
 
 def lgetxattr(path, name):
+    if _lgetxattr is None:
+        return None
+
     if type(path) == str:
         path = path.encode(errors='backslashreplace')
     if type(name) == str:

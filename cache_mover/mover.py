@@ -56,7 +56,7 @@ def makedirs_preserve_stats(src_dir, dest_dir): # dir tree perm fix attempt v1.3
             logging.error(f"Failed to create or set permissions for {new_dir}: {e}")
             raise
 
-def move_file(src, dest_base, config, target_reached_lock, dry_run=False, stop_event=None):
+def move_file(src, dest_base, config, target_reached_lock, dry_run=False, stop_event=None, respect_target=True):
     if stop_event and stop_event.is_set():
         return False, 0, 0
 
@@ -72,10 +72,11 @@ def move_file(src, dest_base, config, target_reached_lock, dry_run=False, stop_e
         file_size = os.path.getsize(src)
         start_time = time()
         
-        with target_reached_lock:
-            current_usage = get_fs_usage(cache_path)
-            if current_usage <= target_percentage:
-                return False, 0, 0
+        if respect_target:
+            with target_reached_lock:
+                current_usage = get_fs_usage(cache_path)
+                if current_usage <= target_percentage:
+                    return False, 0, 0
 
         src_stat = os.stat(src)
         logging.debug(f"Source file {src} permissions: mode={oct(stat.S_IMODE(src_stat.st_mode))}, uid={src_stat.st_uid}, gid={src_stat.st_gid}")
@@ -171,7 +172,7 @@ def move_file(src, dest_base, config, target_reached_lock, dry_run=False, stop_e
         logging.error(f"Error moving file {src}: {e}")
         return False, 0, 0
 
-def move_hardlinked_files(hardlink_group, dest_base, config, target_reached_lock, dry_run=False, stop_event=None):
+def move_hardlinked_files(hardlink_group, dest_base, config, target_reached_lock, dry_run=False, stop_event=None, respect_target=True):
     if stop_event and stop_event.is_set():
         return False, 0, 0
 
@@ -184,10 +185,11 @@ def move_hardlinked_files(hardlink_group, dest_base, config, target_reached_lock
         file_size = os.path.getsize(src_first)
         start_time = time()
         
-        with target_reached_lock:
-            current_usage = get_fs_usage(cache_path)
-            if current_usage <= target_percentage:
-                return False, 0, 0
+        if respect_target:
+            with target_reached_lock:
+                current_usage = get_fs_usage(cache_path)
+                if current_usage <= target_percentage:
+                    return False, 0, 0
 
         if not dry_run and get_fs_free_space(backing_path) < file_size:
             logging.error(f"Not enough space in backing storage for hardlinked files")
@@ -318,7 +320,7 @@ def move_hardlinked_files(hardlink_group, dest_base, config, target_reached_lock
         logging.error(f"Error moving hardlinked files: {e}")
         return False, 0, 0
 
-def move_symlink(src, dest_base, config, target_reached_lock, dry_run=False, stop_event=None):
+def move_symlink(src, dest_base, config, target_reached_lock, dry_run=False, stop_event=None, respect_target=True):
     if stop_event and stop_event.is_set():
         return False, 0, 0
 
@@ -333,10 +335,11 @@ def move_symlink(src, dest_base, config, target_reached_lock, dry_run=False, sto
     try:
         start_time = time()
         
-        with target_reached_lock:
-            current_usage = get_fs_usage(cache_path)
-            if current_usage <= target_percentage:
-                return False, 0, 0
+        if respect_target:
+            with target_reached_lock:
+                current_usage = get_fs_usage(cache_path)
+                if current_usage <= target_percentage:
+                    return False, 0, 0
 
         target = os.readlink(src)
         
@@ -393,7 +396,7 @@ def move_symlink(src, dest_base, config, target_reached_lock, dry_run=False, sto
         logging.error(f"Error moving symlink {src}: {e}")
         return False, 0, 0
 
-def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=None):
+def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=None, respect_target=True):
     regular_files, hardlink_groups, symlinks = files_to_move
     if not regular_files and not hardlink_groups and not symlinks:
         return 0, 0, 0, 0
@@ -418,7 +421,8 @@ def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=Non
                 config,
                 target_reached_lock,
                 dry_run,
-                stop_event
+                stop_event,
+                respect_target
             ): src for src in regular_files
         }
         
@@ -431,7 +435,8 @@ def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=Non
                     config,
                     target_reached_lock,
                     dry_run,
-                    stop_event
+                    stop_event,
+                    respect_target
                 )
             ] = f"hardlink_group_{inode}"
 
@@ -444,7 +449,8 @@ def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=Non
                     config,
                     target_reached_lock,
                     dry_run,
-                    stop_event
+                    stop_event,
+                    respect_target
                 )
             ] = f"symlink_{src}"
 
@@ -465,12 +471,13 @@ def move_files_concurrently(files_to_move, config, dry_run=False, stop_event=Non
                         moved_count += 1
                     total_bytes_moved += bytes_moved
                     total_time += time_taken
-                    current_usage = get_fs_usage(cache_path)
-                    if current_usage <= target_percentage:
-                        if stop_event:
-                            stop_event.set()
-                        logging.info(f"Target usage of {target_percentage}% reached. Stopping.")
-                        break
+                    if respect_target:
+                        current_usage = get_fs_usage(cache_path)
+                        if current_usage <= target_percentage:
+                            if stop_event:
+                                stop_event.set()
+                            logging.info(f"Target usage of {target_percentage}% reached. Stopping.")
+                            break
 
             except Exception as e:
                 logging.error(f"Error processing {src}: {e}")

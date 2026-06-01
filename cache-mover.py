@@ -72,9 +72,10 @@ def main():
         # Fix: Empty cache mode should still notify if NOTIFY_THRESHOLD
         empty_cache_mode = (cleanup_mgr.threshold == 0 and cleanup_mgr.target == 0)
         
-        if not args.dry_run and not needs_cleanup:
+        if not needs_cleanup:
             logger.info("Cache usage below threshold")
-            notification_mgr.notify_threshold_not_met(current_usage, cleanup_mgr.threshold)
+            if not args.dry_run:
+                notification_mgr.notify_threshold_not_met(current_usage, cleanup_mgr.threshold)
             sys.exit(0)
 
         def signal_handler(signum, frame):

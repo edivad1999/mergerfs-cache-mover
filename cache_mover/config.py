@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+from copy import deepcopy
 
 HARDCODED_EXCLUSIONS = [
     'snapraid',
@@ -30,11 +31,27 @@ DEFAULT_CONFIG = {
         'INSTANCE_ID': None,
         'LOG_LEVEL': 'INFO',
         'KEEP_EMPTY_DIRS': False,
+        'AGE_THRESHOLD_DAYS': 0,
     }
 }
 
 def _parse_bool(value):
     return str(value).lower() == 'true'
+
+def _parse_non_negative_int(value):
+    if isinstance(value, bool):
+        raise ValueError("AGE_THRESHOLD_DAYS must be a non-negative integer")
+
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+    else:
+        raise ValueError("AGE_THRESHOLD_DAYS must be a non-negative integer")
+
+    if parsed < 0:
+        raise ValueError("AGE_THRESHOLD_DAYS must be a non-negative integer")
+    return parsed
 
 def _parse_excluded_dirs(value):
     dirs = [y.strip() for y in value.split(',')] if value else []
@@ -44,7 +61,7 @@ def get_script_dir():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def load_config(config_path=None):
-    config = DEFAULT_CONFIG.copy()
+    config = deepcopy(DEFAULT_CONFIG)
     
     if config_path:
         if not os.path.exists(config_path):
@@ -56,7 +73,7 @@ def load_config(config_path=None):
     
     if os.path.exists(final_config_path):
         with open(final_config_path, 'r') as config_file:
-            file_config = yaml.safe_load(config_file)
+            file_config = yaml.safe_load(config_file) or {}
             config['Paths'].update(file_config.get('Paths', {}))
             
             user_exclusions = file_config.get('Settings', {}).get('EXCLUDED_DIRS', [])
@@ -93,6 +110,7 @@ def load_config(config_path=None):
         'INSTANCE_ID': ('Settings', 'INSTANCE_ID', str),
         'LOG_LEVEL': ('Settings', 'LOG_LEVEL', str),
         'KEEP_EMPTY_DIRS': ('Settings', 'KEEP_EMPTY_DIRS', _parse_bool),
+        'AGE_THRESHOLD_DAYS': ('Settings', 'AGE_THRESHOLD_DAYS', _parse_non_negative_int),
     }
 
     for env_var, (section, key, *convert) in env_mappings.items():
@@ -117,6 +135,9 @@ def load_config(config_path=None):
 
     threshold = config['Settings']['THRESHOLD_PERCENTAGE']
     target = config['Settings']['TARGET_PERCENTAGE']
+    config['Settings']['AGE_THRESHOLD_DAYS'] = _parse_non_negative_int(
+        config['Settings'].get('AGE_THRESHOLD_DAYS', 0)
+    )
     
     if threshold == 0 and target == 0:
         config['Settings']['EMPTY_CACHE_MODE'] = True

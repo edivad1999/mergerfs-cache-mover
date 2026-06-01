@@ -5,6 +5,8 @@ config.yml
 notifications_old.py
 .vscode/
 test_*.py
+!tests/
+!tests/test_*.py
 *.md
 *au*
 !README.md

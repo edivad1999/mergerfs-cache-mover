@@ -11,6 +11,7 @@ services:
       SCHEDULE: '0 3 * * *' # Run at 3 AM daily
       THRESHOLD_PERCENTAGE: 70
       TARGET_PERCENTAGE: 25
+      AGE_THRESHOLD_DAYS: 0
       MAX_WORKERS: 8
       EXCLUDED_DIRS: temp,downloads,cache
       NOTIFICATIONS_ENABLED: True

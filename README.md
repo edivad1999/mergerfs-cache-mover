@@ -5,7 +5,7 @@ Python script / Docker container for moving files. Used primarily for moves from
 This was created as part of [MANS.](https://github.com/monstermuffin/muffins-awesome-nas-stack/)
 
 ## How It Works
-The script operates by checking the disk usage of the defined 'cache' directory. If the usage is above the threshold percentage defined in the configuration file (`config.yml`), it will move the oldest files out to the backing storage location until the usage is below a defined target percentage. Empty directories are cleaned after this operation.
+The script operates by checking the disk usage of the defined 'cache' directory. If the usage is above the threshold percentage defined in the configuration file (`config.yml`), it will move the oldest files out to the backing storage location until the usage is below a defined target percentage. If cache usage is below the threshold and `AGE_THRESHOLD_DAYS` is set, files older than that age are moved to backing storage. Empty directories are cleaned after this operation.
 
 Files are moved using atomic operations by default (as of v1.4): each file is copied to a temporary name (`.filename.ext.abc123`), then atomically renamed to its final destination. This prevents race conditions and ensures applications never see partial files during transfers.
 
@@ -42,6 +42,7 @@ Copy `config.example.yml` to `config.yml` and set up your `config.yml` with the 
 - `AUTO_UPDATE`: Allows the script to update itself from GitHub on ever run.
 - `THRESHOLD_PERCENTAGE`: The usage percentage of the cache directory that triggers the file-moving process.
 - `TARGET_PERCENTAGE`: The target usage percentage to achieve after moving files.
+- `AGE_THRESHOLD_DAYS`: Move files older than this many days when cache usage is below the threshold. Set to `0` to disable.
 - `MAX_WORKERS`: The maximum number of parallel file-moving operations.
 - `MAX_LOG_SIZE_MB`: The maximum size for the log file before it's rotated.
 - `BACKUP_COUNT`: The number of backup log files to maintain.
@@ -75,6 +76,7 @@ services:
       SCHEDULE: '0 3 * * *'  # Run at 3 AM daily
       THRESHOLD_PERCENTAGE: 70
       TARGET_PERCENTAGE: 25
+      AGE_THRESHOLD_DAYS: 0
       LOG_LEVEL: INFO
       MAX_WORKERS: 8
       # Comma-separated list of excluded directories
@@ -107,6 +109,7 @@ All configuration options can be set via environment variables:
 - `SCHEDULE`: Cron expression for scheduling (default: "0 3 * * *")
 - `THRESHOLD_PERCENTAGE`: Usage percentage that triggers moves (default: 70)
 - `TARGET_PERCENTAGE`: Target usage percentage (default: 25)
+- `AGE_THRESHOLD_DAYS`: Move files older than this many days when cache usage is below `THRESHOLD_PERCENTAGE` (default: 0, disabled)
 - `LOG_LEVEL`: Log level (default: INFO, examples: `DEBUG`, `INFO`, `WARNING`, `ERROR`).
 - `MAX_WORKERS`: Maximum parallel file moves (default: 8)
 - `EXCLUDED_DIRS`: Comma-separated list of directories to exclude (e.g., `"snapraid,media/downloads,media/torrents/audiobooks"`)
@@ -479,6 +482,22 @@ Settings:
  # ... other settings ...
   THRESHOLD_PERCENTAGE: 0
   TARGET_PERCENTAGE: 0
+```
+
+### Age-Based Moving
+Set `AGE_THRESHOLD_DAYS` to move files based on modified time when cache usage is below `THRESHOLD_PERCENTAGE`. A value of `1` means files must be at least 24 hours old. The default value is `0`, which disables age-based moving.
+
+Usage-based moving always takes priority. If cache usage is above `THRESHOLD_PERCENTAGE`, the script keeps the existing behavior and moves oldest files until `TARGET_PERCENTAGE` is reached, even if some files are younger than `AGE_THRESHOLD_DAYS`.
+
+```yaml
+environment:
+  - AGE_THRESHOLD_DAYS=7
+```
+
+```yml
+Settings:
+ # ... other settings ...
+  AGE_THRESHOLD_DAYS: 7
 ```
 
 ### Auto-Update

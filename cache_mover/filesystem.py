@@ -3,6 +3,7 @@ import shutil
 import stat
 import logging
 import psutil
+from time import time
 from collections import defaultdict
 
 def get_fs_usage(path):
@@ -72,19 +73,42 @@ def is_symlink(path):
         logging.warning(f"Error checking symlink for {path}: {e}")
         return False, None
 
-def gather_files_to_move(config):
+def get_mtime(path):
+    try:
+        return os.stat(path, follow_symlinks=False).st_mtime
+    except (OSError, IOError) as e:
+        logging.warning(f"Error getting mtime for {path}: {e}")
+        return float('inf')
+
+def is_age_eligible(path, cutoff_time):
+    return get_mtime(path) <= cutoff_time
+
+def gather_files_to_move(config, age_threshold_days=0, now=None):
     cache_path = config['Paths']['CACHE_PATH']
     excluded_dirs = config['Settings']['EXCLUDED_DIRS']
     files_to_move = []
     symlinks = {}
+    cutoff_time = None
 
-    for root, _, files in os.walk(cache_path):
+    if age_threshold_days > 0:
+        current_time = time() if now is None else now
+        cutoff_time = current_time - (age_threshold_days * 86400)
+
+    for root, dirs, files in os.walk(cache_path):
         if is_excluded(root, excluded_dirs):
             continue
+
+        dirs[:] = sorted(
+            d for d in dirs
+            if not is_excluded(os.path.join(root, d), excluded_dirs)
+        )
             
-        for file in files:
+        for file in sorted(files):
             file_path = os.path.join(root, file)
             try:
+                if cutoff_time is not None and not is_age_eligible(file_path, cutoff_time):
+                    continue
+
                 is_link, target = is_symlink(file_path)
                 if is_link:
                     symlinks[file_path] = target
@@ -97,6 +121,8 @@ def gather_files_to_move(config):
                 logging.warning(f"Error accessing file {file_path}: {e}")
                 continue
 
+    files_to_move.sort(key=get_mtime)
+    symlinks = dict(sorted(symlinks.items(), key=lambda item: get_mtime(item[0])))
     hardlink_groups = get_hardlink_groups(files_to_move)
     hardlinked_files = set(f for group in hardlink_groups.values() for f in group)
     regular_files = [f for f in files_to_move if f not in hardlinked_files]
