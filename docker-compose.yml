@@ -9,6 +9,7 @@ services:
       BACKING_PATH: /mnt/media-cold
       # Optional settings with their default values
       SCHEDULE: '0 3 * * *' # Run at 3 AM daily
+      WEB_UI_PORT: 9090
       THRESHOLD_PERCENTAGE: 70
       TARGET_PERCENTAGE: 25
       AGE_THRESHOLD_DAYS: 0
@@ -23,6 +24,8 @@ services:
       - /mnt/media-cold:/mnt/media-cold:rw
       - /mnt/data-disks:/mnt/data-disks:rw  # Required for hardlink support
       - /var/log:/var/log:rw
+    ports:
+      - "9090:9090"
     cap_add:
       - SYS_ADMIN
       - DAC_READ_SEARCH
@@ -40,6 +43,8 @@ services:
       - /mnt/cache-disks:/mnt/cache-disks:rw
       - /mnt/media-cold:/mnt/media-cold:rw
       - /var/log:/var/log:rw
+    ports:
+      - "9090:9090"
     cap_add:
       - SYS_ADMIN
       - DAC_READ_SEARCH

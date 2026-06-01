@@ -3,6 +3,10 @@ run_cache_mover() {
     python /app/cache-mover.py --console-log
 }
 
+run_webui() {
+    python -m cache_mover.webui
+}
+
 SCHEDULE_FROM_CONFIG=$(python3 -c "
 import yaml
 try:
@@ -23,6 +27,7 @@ chmod 0644 /etc/cron.d/cache-mover
 
 crontab /etc/cron.d/cache-mover
 
+run_webui &
 run_cache_mover
 cron -f &
 tail -f /var/log/cache-mover.log
