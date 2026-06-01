@@ -13,7 +13,8 @@ HARDCODED_EXCLUSIONS = [
 
 DEFAULT_CONFIG = {
     'Paths': {
-        'LOG_PATH': '/var/log/cache-mover.log'
+        'LOG_PATH': '/var/log/cache-mover.log',
+        'STATUS_PATH': '/var/log/cache-mover-status.json',
     },
     'Settings': {
         'AUTO_UPDATE': False,
@@ -32,6 +33,8 @@ DEFAULT_CONFIG = {
         'LOG_LEVEL': 'INFO',
         'KEEP_EMPTY_DIRS': False,
         'AGE_THRESHOLD_DAYS': 0,
+        'WEB_UI_HOST': '0.0.0.0',
+        'WEB_UI_PORT': 9090,
     }
 }
 
@@ -51,6 +54,16 @@ def _parse_non_negative_int(value):
 
     if parsed < 0:
         raise ValueError("AGE_THRESHOLD_DAYS must be a non-negative integer")
+    return parsed
+
+def _parse_port(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("WEB_UI_PORT must be an integer between 1 and 65535")
+
+    if parsed < 1 or parsed > 65535:
+        raise ValueError("WEB_UI_PORT must be an integer between 1 and 65535")
     return parsed
 
 def _parse_excluded_dirs(value):
@@ -96,6 +109,7 @@ def load_config(config_path=None):
         'CACHE_PATH': ('Paths', 'CACHE_PATH'),
         'BACKING_PATH': ('Paths', 'BACKING_PATH'),
         'LOG_PATH': ('Paths', 'LOG_PATH'),
+        'STATUS_PATH': ('Paths', 'STATUS_PATH'),
         'THRESHOLD_PERCENTAGE': ('Settings', 'THRESHOLD_PERCENTAGE', float),
         'TARGET_PERCENTAGE': ('Settings', 'TARGET_PERCENTAGE', float),
         'MAX_WORKERS': ('Settings', 'MAX_WORKERS', int),
@@ -111,6 +125,8 @@ def load_config(config_path=None):
         'LOG_LEVEL': ('Settings', 'LOG_LEVEL', str),
         'KEEP_EMPTY_DIRS': ('Settings', 'KEEP_EMPTY_DIRS', _parse_bool),
         'AGE_THRESHOLD_DAYS': ('Settings', 'AGE_THRESHOLD_DAYS', _parse_non_negative_int),
+        'WEB_UI_HOST': ('Settings', 'WEB_UI_HOST', str),
+        'WEB_UI_PORT': ('Settings', 'WEB_UI_PORT', _parse_port),
     }
 
     for env_var, (section, key, *convert) in env_mappings.items():
@@ -137,6 +153,9 @@ def load_config(config_path=None):
     target = config['Settings']['TARGET_PERCENTAGE']
     config['Settings']['AGE_THRESHOLD_DAYS'] = _parse_non_negative_int(
         config['Settings'].get('AGE_THRESHOLD_DAYS', 0)
+    )
+    config['Settings']['WEB_UI_PORT'] = _parse_port(
+        config['Settings'].get('WEB_UI_PORT', 9090)
     )
     
     if threshold == 0 and target == 0:

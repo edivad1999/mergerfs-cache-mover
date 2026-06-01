@@ -12,6 +12,13 @@ from cache_mover.updater import auto_update
 from cache_mover.notifications import NotificationManager
 from cache_mover.cleanup import CleanupManager
 from cache_mover.temp_file_cleanup import cleanup_orphaned_temp_files
+from cache_mover.status import utc_now, write_run_status
+
+def update_status(logger, config, state, **details):
+    try:
+        write_run_status(config, state, **details)
+    except Exception as e:
+        logger.warning(f"Failed to write status file: {e}")
 
 def display_art():
     art = """
@@ -54,6 +61,15 @@ def main():
 
     notification_mgr = NotificationManager(config)
     cleanup_mgr = CleanupManager(config, args.dry_run)
+    started_at = utc_now()
+    update_status(
+        logger,
+        config,
+        'running',
+        started_at=started_at,
+        dry_run=args.dry_run,
+        message='Cache mover started',
+    )
 
     if config['Settings'].get('AUTO_UPDATE', False):
         if not auto_update(config):
@@ -68,26 +84,77 @@ def main():
 
     try:
         current_usage, needs_cleanup = cleanup_mgr.check_usage()
+        update_status(
+            logger,
+            config,
+            'running',
+            started_at=started_at,
+            dry_run=args.dry_run,
+            current_usage=current_usage,
+            threshold=cleanup_mgr.threshold,
+            target=cleanup_mgr.target,
+            age_threshold_days=cleanup_mgr.age_threshold_days,
+            run_mode=cleanup_mgr.run_mode,
+            needs_cleanup=needs_cleanup,
+        )
 
         # Fix: Empty cache mode should still notify if NOTIFY_THRESHOLD
         empty_cache_mode = (cleanup_mgr.threshold == 0 and cleanup_mgr.target == 0)
         
         if not needs_cleanup:
             logger.info("Cache usage below threshold")
+            update_status(
+                logger,
+                config,
+                'no_action',
+                started_at=started_at,
+                ended_at=utc_now(),
+                dry_run=args.dry_run,
+                current_usage=current_usage,
+                threshold=cleanup_mgr.threshold,
+                target=cleanup_mgr.target,
+                age_threshold_days=cleanup_mgr.age_threshold_days,
+                run_mode=cleanup_mgr.run_mode,
+                needs_cleanup=False,
+                message='Cache usage below threshold',
+            )
             if not args.dry_run:
                 notification_mgr.notify_threshold_not_met(current_usage, cleanup_mgr.threshold)
             sys.exit(0)
 
         def signal_handler(signum, frame):
             logger.info("Received signal to stop, finishing current operations...")
+            update_status(
+                logger,
+                config,
+                'stopping',
+                started_at=started_at,
+                dry_run=args.dry_run,
+                run_mode=cleanup_mgr.run_mode,
+                signal=signum,
+            )
             cleanup_mgr.stop()
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
         result = cleanup_mgr.run_cleanup()
-        if not args.dry_run:
-            if result:
-                moved_count, final_usage, total_bytes, elapsed_time, avg_speed = result
+        if result:
+            moved_count, final_usage, total_bytes, elapsed_time, avg_speed = result
+            update_status(
+                logger,
+                config,
+                'dry_run' if args.dry_run else 'success',
+                started_at=started_at,
+                ended_at=utc_now(),
+                dry_run=args.dry_run,
+                run_mode=cleanup_mgr.run_mode,
+                moved_count=moved_count,
+                final_usage=final_usage,
+                total_bytes=total_bytes,
+                elapsed_time=elapsed_time,
+                avg_speed=avg_speed,
+            )
+            if not args.dry_run:
                 notification_mgr.notify_completion(
                     moved_count=moved_count,
                     final_usage=final_usage,
@@ -95,15 +162,40 @@ def main():
                     elapsed_time=elapsed_time,
                     avg_speed=avg_speed
                 )
-            elif empty_cache_mode:
+            else:
+                logger.info("DRY RUN: Skipping notification")
+        else:
+            update_status(
+                logger,
+                config,
+                'no_action',
+                started_at=started_at,
+                ended_at=utc_now(),
+                dry_run=args.dry_run,
+                current_usage=current_usage,
+                threshold=cleanup_mgr.threshold,
+                target=cleanup_mgr.target,
+                age_threshold_days=cleanup_mgr.age_threshold_days,
+                run_mode=cleanup_mgr.run_mode,
+                message='No files to move',
+            )
+            if not args.dry_run and empty_cache_mode:
                 # Fix: Empty cache mode should still notify if NOTIFY_THRESHOLD
                 logger.info("Empty cache mode: no files found to move")
                 notification_mgr.notify_threshold_not_met(current_usage, cleanup_mgr.threshold)
-        elif args.dry_run and result:
-            logger.info("DRY RUN: Skipping notification")
 
     except Exception as e:
         logger.error(f"Error during execution: {e}")
+        update_status(
+            logger,
+            config,
+            'error',
+            started_at=started_at,
+            ended_at=utc_now(),
+            dry_run=args.dry_run,
+            run_mode=cleanup_mgr.run_mode,
+            error=str(e),
+        )
         notification_mgr.notify_error(str(e))
         raise
 
